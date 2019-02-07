@@ -1,6 +1,7 @@
 from collections import defaultdict
 import random
 
+import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objs as go
@@ -39,16 +40,15 @@ def get_id(dataset_name):
 SIGNAL_ID = 'summary-signal'
 
 
-def build(dataset_name, model_names):
-    return dcc.Graph(id=get_id(dataset_name), figure=render(dataset_name, model_names),
+def build(redis_client, dataset_name, model_names):
+    return dcc.Graph(id=get_id(dataset_name),
+                     figure=render(redis_client, dataset_name, model_names),
                      clear_on_unhover=True)
 
 
-def render(dataset_name, model_names, *args, distrib_mode=None):
-    if len(args) == 2:
-        n_intervals, distrib_name = args
-    else:
-        distrib_name = 'min'
+def render(redis_client, dataset_name, model_names, *args, distrib_mode=None):
+
+    distrib_name = redis_client.get('distrib-name').decode('utf-8')
 
     return {
         'data': [
@@ -79,7 +79,7 @@ def render(dataset_name, model_names, *args, distrib_mode=None):
         )}
 
 
-def signal(dataset_name, model_names, *click_datas):
+def signal(redis_client, dataset_name, model_names, *click_datas):
     # Find what model it is
     model_name = None
     for click_data in click_datas:
@@ -88,9 +88,13 @@ def signal(dataset_name, model_names, *click_datas):
             break
 
     if model_name is None:
-        return False
+        raise dash.exceptions.PreventUpdate
 
-    # if already in db: return False
-    # else
-    # set in DB
-    return model_name  # True
+    old_model_name = redis_client.get('model-name').decode('utf-8')
+
+    if old_model_name == model_name:
+        raise dash.exceptions.PreventUpdate
+
+    redis_client.set('model-name', model_name)
+
+    return model_name

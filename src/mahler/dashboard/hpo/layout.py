@@ -12,24 +12,24 @@ from . import curves
 from . import distrib
 
 
-def build_row(dataset_name, model_names):
+def build_row(redis_client, dataset_name, model_names):
     return html.Div([
         html.Div(
-            summary.build(dataset_name, model_names),
+            summary.build(redis_client, dataset_name, model_names),
             className='three columns'),
         html.Div(
-            evolution.build(dataset_name, model_names),
+            evolution.build(redis_client, dataset_name, model_names),
             className='three columns'),
         html.Div(
-            curves.build(dataset_name, model_names),
+            curves.build(redis_client, dataset_name, model_names),
             className='three columns'),
         html.Div(
-            distrib.build(dataset_name, model_names),
+            distrib.build(redis_client, dataset_name, model_names),
             className='three columns')],
         className='row')
 
 
-def build(dataset_names, model_names, refresh_interval=5):
+def build(redis_client, dataset_names, model_names, refresh_interval=5):
     rows = [
         dcc.Interval(
             id='interval-component',
@@ -37,6 +37,6 @@ def build(dataset_names, model_names, refresh_interval=5):
             n_intervals=0)]
 
     for dataset_name in dataset_names:
-        rows.append(build_row(dataset_name, model_names))
+        rows.append(build_row(redis_client, dataset_name, model_names))
 
     return html.Div(rows)

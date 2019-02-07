@@ -1,5 +1,6 @@
 import random
 
+import dash
 import dash_core_components as dcc
 import plotly.graph_objs as go
 
@@ -18,20 +19,18 @@ class DistributionPlot():
         self.default_algorithm = default_algorithm
         self.id = get_id(dataset_name)
 
-    def build(self, model_names):
-        return dcc.Graph(id=self.id, figure=self.render(model_names))
+    def build(self, redis_client, model_names):
+        return dcc.Graph(id=self.id, figure=self.render(redis_client, model_names))
 
     def compute(data):
         # smove(src, dst, value)
         data = get(self.id + "-queue", value)
         set("{id}-{model}-{algo}-data".format(id=self.id, model=model, algo=algo), value)
 
-    def render(self, model_names, *args):
-        if len(args) == 3:
-            n_intervals, model_name, algo_name = args
-        else:
-            model_name = 'lenet'
-            algo_name = 'random-search'
+    def render(self, redis_client, model_names, *args):
+
+        model_name = redis_client.get('model-name').decode('utf-8')
+        algo_name = redis_client.get('algo-name').decode('utf-8')
 
         return {
             'data': [
@@ -66,18 +65,18 @@ def refresh():
     return
 
 
-def build(dataset_name, model_names):
-    return DistributionPlot(dataset_name).build(model_names)
+def build(redis_client, dataset_name, model_names):
+    return DistributionPlot(dataset_name).build(redis_client, model_names)
 
 
-def render(dataset_name, model_names, *args):
-    return DistributionPlot(dataset_name).render(model_names, *args)
+def render(redis_client, dataset_name, model_names, *args):
+    return DistributionPlot(dataset_name).render(redis_client, model_names, *args)
 
 
 SIGNAL_ID = 'distrib-signal'
 
 
-def signal(dataset_name, model_names, *click_datas):
+def signal(redis_client, dataset_name, model_names, *click_datas):
     # Find what distrib it is
     distrib_name = None
     for click_data in click_datas:
@@ -86,9 +85,13 @@ def signal(dataset_name, model_names, *click_datas):
             break
 
     if distrib_name is None:
-        return False
+        raise dash.exceptions.PreventUpdate
 
-    # if already in db: return False
-    # else
-    # set in DB
-    return distrib_name  # True
+    old_distrib_name = redis_client.get('distrib-name').decode('utf-8')
+
+    if old_distrib_name == distrib_name:
+        raise dash.exceptions.PreventUpdate
+
+    redis_client.set('distrib-name', distrib_name)
+
+    return distrib_name

@@ -1,5 +1,6 @@
 import random
 
+import dash
 import dash_core_components as dcc
 import plotly.graph_objs as go
 
@@ -25,16 +26,14 @@ def get_id(dataset_name):
     return TEMPLATE.format(dataset_name=dataset_name)
 
 
-def build(dataset_name, model_names):
-    return dcc.Graph(id=get_id(dataset_name), figure=render(dataset_name, model_names))
+def build(redis_client, dataset_name, model_names):
+    return dcc.Graph(id=get_id(dataset_name), figure=render(redis_client, dataset_name, model_names))
 
 
-def render(dataset_name, model_names, *args, model_focus=None, algorithm=None):
-    if len(args) == 3:
-        n_intervals, model_name, algo_name = args
-    else:
-        model_name = 'lenet'
-        algo_name = 'random-search'
+def render(redis_client, dataset_name, model_names, *args, model_focus=None, algorithm=None):
+
+    model_name = redis_client.get('model-name').decode('utf-8')
+    algo_name = redis_client.get('algo-name').decode('utf-8')
 
     return {
             'data': [

@@ -1,6 +1,7 @@
 from collections import defaultdict
 import random
 
+import dash
 import dash_core_components as dcc
 import plotly.graph_objs as go
 
@@ -39,17 +40,15 @@ def get_id(dataset_name):
     return TEMPLATE.format(dataset_name=dataset_name)
 
 
-def build(dataset_name, model_names):
-    return dcc.Graph(id=get_id(dataset_name), figure=render(dataset_name, model_names))
+def build(redis_client, dataset_name, model_names):
+    return dcc.Graph(id=get_id(dataset_name),
+                     figure=render(redis_client, dataset_name, model_names))
 
 
-def render(dataset_name, model_names, *args, model_focus=None, algorithm=None):
-    # load options from db
-    # load data from db based on options (ex: model_name)
-    if len(args) == 2:
-        n_intervals, model_name = args
-    else:
-        model_name = 'lenet'
+def render(redis_client, dataset_name, model_names, *args, model_focus=None, algorithm=None):
+
+    model_name = redis_client.get('model-name').decode('utf-8')
+
     return {
             'data': [
                 go.Scatter(
@@ -82,7 +81,7 @@ SIGNAL_ID = 'evolution-signal'
 
 __TMP_ALGOS = ['random-search', 'ASHA', 'BO', 'evo']
 
-def signal(dataset_name, model_names, *click_datas, algo_names=__TMP_ALGOS):
+def signal(redis_client, dataset_name, model_names, *click_datas, algo_names=__TMP_ALGOS):
     # Find what model it is
     algo_name = None
     for click_data in click_datas:
@@ -91,9 +90,13 @@ def signal(dataset_name, model_names, *click_datas, algo_names=__TMP_ALGOS):
             break
 
     if algo_name is None:
-        return False
+        raise dash.exceptions.PreventUpdate
 
-    # if already in db: return False
-    # else
-    # set in DB
-    return algo_name  # True
+    old_algo_name = redis_client.get('algo-name').decode('utf-8')
+
+    if old_algo_name == algo_name:
+        raise dash.exceptions.PreventUpdate
+
+    redis_client.set('algo-name', algo_name)
+
+    return algo_name
