@@ -33,7 +33,7 @@ def build(dataset_names, model_names, refresh_interval=5):
     rows = [
         dcc.Interval(
             id='interval-component',
-            interval=refresh_interval * 1000000000000,
+            interval=refresh_interval * 1000,
             n_intervals=0)]
 
     for dataset_name in dataset_names:

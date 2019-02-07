@@ -2,6 +2,7 @@ from collections import defaultdict
 import random
 
 import dash_core_components as dcc
+import dash_html_components as html
 import plotly.graph_objs as go
 
 
@@ -35,12 +36,20 @@ def get_id(dataset_name):
     return TEMPLATE.format(dataset_name=dataset_name)
 
 
+SIGNAL_ID = 'summary-signal'
+
+
 def build(dataset_name, model_names):
-    return dcc.Graph(id=get_id(dataset_name), figure=render(dataset_name, model_names))
+    return dcc.Graph(id=get_id(dataset_name), figure=render(dataset_name, model_names),
+                     clear_on_unhover=True)
 
 
 def render(dataset_name, model_names, *args, distrib_mode=None):
-    print(dataset_name, model_names, args)
+    if len(args) == 2:
+        n_intervals, distrib_name = args
+    else:
+        distrib_name = 'min'
+
     return {
         'data': [
             go.Violin(
@@ -53,7 +62,7 @@ def render(dataset_name, model_names, *args, distrib_mode=None):
                 box=dict(visible=True)
                 ) for model_name in model_names],
         'layout': dict(
-            title='models',
+            title='models ({})'.format(distrib_name),
             autosize=True,
             height=250,
             font=dict(color='#CCCCCC'),
@@ -68,3 +77,20 @@ def render(dataset_name, model_names, *args, distrib_mode=None):
             plot_bgcolor="#191A1A",
             paper_bgcolor="#020202",
         )}
+
+
+def signal(dataset_name, model_names, *click_datas):
+    # Find what model it is
+    model_name = None
+    for click_data in click_datas:
+        if click_data is not None:
+            model_name = click_data['points'][0]['x']
+            break
+
+    if model_name is None:
+        return False
+
+    # if already in db: return False
+    # else
+    # set in DB
+    return model_name  # True

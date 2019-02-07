@@ -9,26 +9,30 @@ TEMPLATE = "evolution-{dataset_name}"
 
 
 def _dummy_evolution():
-    epochs = defaultdict(int)
-    evolution = []
-    for i in range(100):
-        x = [int(random.random() * 1000)]
-        y = [random.random()]
-        epochs[x[-1]] = max(epochs[x[-1]], y[-1])
-        for i in range(100):
-            x.append(x[-1] + 1)
-            y.append(y[-1] + random.random())
+    evolutions = []
+    for i in range(4):
+        epochs = defaultdict(int)
+        evolution = []
+        for i in range(10):
+            x = [int(random.random() * 1000)]
+            y = [random.random()]
             epochs[x[-1]] = max(epochs[x[-1]], y[-1])
+            for i in range(100):
+                x.append(x[-1] + 1)
+                y.append(y[-1] + random.random())
+                epochs[x[-1]] = max(epochs[x[-1]], y[-1])
 
-        evolution.append((x[0], max(y)))
+            evolution.append((x[0], max(y)))
 
-    x = [0]
-    y = [0]
-    for i in range(1, 1000):
-        x.append(i)
-        y.append(max(epochs[i], y[-1]))
+        x = [0]
+        y = [0]
+        for i in range(1, 1000):
+            x.append(i)
+            y.append(max(epochs[i], y[-1]))
 
-    return [(x, y)]
+        evolutions.append((x, y))
+
+    return evolutions
 
 
 def get_id(dataset_name):
@@ -40,6 +44,12 @@ def build(dataset_name, model_names):
 
 
 def render(dataset_name, model_names, *args, model_focus=None, algorithm=None):
+    # load options from db
+    # load data from db based on options (ex: model_name)
+    if len(args) == 2:
+        n_intervals, model_name = args
+    else:
+        model_name = 'lenet'
     return {
             'data': [
                 go.Scatter(
@@ -51,7 +61,7 @@ def render(dataset_name, model_names, *args, model_focus=None, algorithm=None):
                     showlegend=False,
                     ) for x, y in _dummy_evolution()],
             'layout': dict(
-                title='lenet',
+                title=model_name,
                 autosize=True,
                 height=250,
                 font=dict(color='#CCCCCC'),
@@ -66,3 +76,24 @@ def render(dataset_name, model_names, *args, model_focus=None, algorithm=None):
                 plot_bgcolor="#191A1A",
                 paper_bgcolor="#020202",
             )}
+
+
+SIGNAL_ID = 'evolution-signal'
+
+__TMP_ALGOS = ['random-search', 'ASHA', 'BO', 'evo']
+
+def signal(dataset_name, model_names, *click_datas, algo_names=__TMP_ALGOS):
+    # Find what model it is
+    algo_name = None
+    for click_data in click_datas:
+        if click_data is not None:
+            algo_name = algo_names[click_data['points'][0]['curveNumber']]
+            break
+
+    if algo_name is None:
+        return False
+
+    # if already in db: return False
+    # else
+    # set in DB
+    return algo_name  # True

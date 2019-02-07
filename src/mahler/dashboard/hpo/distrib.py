@@ -26,7 +26,13 @@ class DistributionPlot():
         data = get(self.id + "-queue", value)
         set("{id}-{model}-{algo}-data".format(id=self.id, model=model, algo=algo), value)
 
-    def render(self, model_names, model_name=None, algorithm=None):
+    def render(self, model_names, *args):
+        if len(args) == 3:
+            n_intervals, model_name, algo_name = args
+        else:
+            model_name = 'lenet'
+            algo_name = 'random-search'
+
         return {
             'data': [
                 go.Violin(
@@ -39,7 +45,7 @@ class DistributionPlot():
                     box=dict(visible=True)
                     ) for label in ['min', 'max', 'mean']],
             'layout': dict(
-                title='lenet',
+                title='{} - {}'.format(model_name, algo_name),
                 autosize=True,
                 height=250,
                 font=dict(color='#CCCCCC'),
@@ -65,4 +71,24 @@ def build(dataset_name, model_names):
 
 
 def render(dataset_name, model_names, *args):
-    return DistributionPlot(dataset_name).render(model_names)
+    return DistributionPlot(dataset_name).render(model_names, *args)
+
+
+SIGNAL_ID = 'distrib-signal'
+
+
+def signal(dataset_name, model_names, *click_datas):
+    # Find what distrib it is
+    distrib_name = None
+    for click_data in click_datas:
+        if click_data is not None:
+            distrib_name = click_data['points'][0]['x']
+            break
+
+    if distrib_name is None:
+        return False
+
+    # if already in db: return False
+    # else
+    # set in DB
+    return distrib_name  # True
