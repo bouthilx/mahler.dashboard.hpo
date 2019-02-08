@@ -1,9 +1,17 @@
 from collections import defaultdict
+import datetime
 import random
+import time
+
+import json
 
 import dash
 import dash_core_components as dcc
 import plotly.graph_objs as go
+
+from . import config
+from . import processor
+from . import utils
 
 
 TEMPLATE = "evolution-{dataset_name}"
@@ -49,16 +57,35 @@ def render(redis_client, dataset_name, model_names, *args, model_focus=None, alg
 
     model_name = redis_client.get('model-name').decode('utf-8')
 
+    key = 'evolution-{dataset_name}-{model_name}-data'.format(
+        dataset_name=dataset_name, model_name=model_name)
+
+    dataraw = redis_client.get(key)
+
+    if dataraw is not None:
+        data = json.loads(dataraw.decode('utf-8'))['data']
+    else:
+        data = {}
+
+    lines = dict()
+    for algo_name in config.algo_names:
+        lines[algo_name] = ([], [])
+
+        for trial in sorted(data.get(algo_name, {}).values(), key=lambda trial: trial[0]):
+            lines[algo_name][0].append(trial[0])
+            lines[algo_name][1].append(trial[1])
+
     return {
             'data': [
                 go.Scatter(
-                    x=x,
-                    y=y,
+                    x=lines[algo_name][0],
+                    y=lines[algo_name][1],
                     mode='lines',
-                    line=dict(color='#FFAA00'),
+                    name=algo_name,
+                    # line=dict(color='#FFAA00'),
                     opacity=1.0,
                     showlegend=False,
-                    ) for x, y in _dummy_evolution()],
+                    ) for algo_name in config.algo_names],
             'layout': dict(
                 title=model_name,
                 autosize=True,
@@ -100,3 +127,52 @@ def signal(redis_client, dataset_name, model_names, *click_datas, algo_names=__T
     redis_client.set('algo-name', algo_name)
 
     return algo_name
+
+
+class Observer:
+    def __init__(self, dataset_name, model_name, client):
+        self.dataset_name = dataset_name
+        self.model_name = model_name
+        self.client = client
+
+    def get_key(self):
+        return 'evolution-{dataset_name}-{model_name}-queue'.format(
+            dataset_name=self.dataset_name, model_name=self.model_name)
+
+    def register(self, document):
+        tags = [self.dataset_name, self.model_name, 'hpo', 'train']
+        if all(tag in document['registry']['tags'] for tag in tags):
+            start_time = utils.convert_strdatetime(document['registry']['start_time'])
+            duration = datetime.timedelta(seconds=document['registry']['duration'])
+
+            observed_doc = dict(id=document['id'],
+                                end_time=str(start_time + duration),
+                                algo_name=utils.get_algo_name(document['registry']['tags']),
+                                value=document['output']['best_stats']['valid']['error_rate'])
+            self.client.rpush(self.get_key(), json.dumps(observed_doc))
+
+
+def build_observer(dataset_name, model_name, algo_name, distrib_name, redis_client):
+    return Observer(dataset_name, model_name, algo_name, distrib_name, redis_client)
+
+
+def build_observers(redis_client, dataset_names, model_names, algo_names, distrib_names):
+    observers = []
+    for dataset_name in dataset_names:
+        for model_name in model_names:
+            observers.append(Observer(dataset_name, model_name, redis_client))
+
+    return observers
+
+
+class DataProcessor(processor.DataProcessor):
+
+    def compute(self, data, new_data):
+
+        for new_trial in new_data:
+            algo_name = new_trial['algo_name']
+            if algo_name not in data:
+                data[algo_name] = dict()
+            data[algo_name][new_trial['id']] = (new_trial['end_time'], new_trial['value'])
+
+        return data
