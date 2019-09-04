@@ -11,9 +11,11 @@ TODO: Write long description
 """
 from mahler.dashboard.hpo import app
 
+from mahler.dashboard.hpo import config
+
 
 def main(options):
     run_options = dict(debug=False, port=5011, host='0.0.0.0', threaded=True, processes=1)
-    options = dict(dataset_names=['mnist', 'svhn', 'cifar10'],
-                   model_names=['lenet', 'vgg11', 'resnet18'])
+    options = dict(dataset_names=config.dataset_names,
+                   model_names=config.model_names)
     app.build(options).run_server(**run_options)

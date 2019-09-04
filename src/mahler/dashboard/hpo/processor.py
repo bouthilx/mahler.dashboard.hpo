@@ -8,7 +8,7 @@ import json
 class DataProcessor(multiprocessing.Process):
     daemon = True
 
-    def __init__(self, observer, max_pop=10, sleep_time=1, **kwargs):
+    def __init__(self, observer, max_pop=50, sleep_time=1, **kwargs):
         self.observer = observer
         self.max_pop = max_pop
         self.sleep_time = sleep_time

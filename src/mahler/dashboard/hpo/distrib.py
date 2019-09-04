@@ -109,6 +109,8 @@ SIGNAL_ID = 'distrib-signal'
 
 
 def signal(redis_client, dataset_name, model_names, *click_datas):
+
+    print('signal', dataset_name, model_names, click_datas)
     # Find what distrib it is
     distrib_name = None
     for click_data in click_datas:
@@ -146,7 +148,7 @@ class Observer:
             observed_doc = dict(
                 id=document['id'],
                 distrib_name=utils.get_distrib_name(document['registry']['tags']),
-                value=document['output']['best_stats']['test']['error_rate'])
+                value=document['output']['best']['test']['error_rate'])
             self.client.rpush(self.get_key(), json.dumps(observed_doc))
 
 

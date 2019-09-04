@@ -18,8 +18,8 @@ def build(redis_client, dataset_names, model_names):
         signal_components.append(
             html.Div(id=plotter.SIGNAL_ID, style={'display': 'none'}))
 
-    redis_client.set('model-name', 'lenet')
-    redis_client.set('algo-name', 'random-search')
+    redis_client.set('model-name', 'preactresnet18')
+    redis_client.set('algo-name', 'asha')
     redis_client.set('distrib-name', 'min')
 
     return html.Div(signal_components)
@@ -58,13 +58,16 @@ def register(app, redis_client, dataset_names, model_names):
     inputs = [Input('interval-component', 'n_intervals'),
               Input('signal-component', 'children')]
 
-    for plot in [distrib, curves, evolution, summary]:
+    # for plot in [distrib, curves, evolution, summary]:
+    for plot in [summary]:
         if not signals(plot):
             continue
 
         # Detect click, set options in DB
         inputs = [Input(plot.get_id(dataset_name), 'hoverData') for dataset_name in dataset_names]
+        print([plot.get_id(dataset_name) for dataset_name in dataset_names])
 
+        print('install callback', plot.SIGNAL_ID, plot, dataset_names)
         app.callback(Output(plot.SIGNAL_ID, 'children'), inputs)(
                         functools.partial(plot.signal, redis_client, None, model_names))
 

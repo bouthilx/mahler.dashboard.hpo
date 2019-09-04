@@ -10,9 +10,14 @@ import dash_html_components as html
 
 from flask_caching import Cache
 
+import pymongo
+
+from mahler.client import Client
+
 
 from . import layout
 from . import callback
+from . import config
 from . import observer
 
 
@@ -41,9 +46,6 @@ def build(options):
     p.start()
 
     # query(observers, {})
-
-    # TODO: build daemons for each plotter computations, no signal is fired when
-    #       new computations ready.
 
     return app
 
@@ -88,7 +90,7 @@ def __dummy_query():
                               'train' if random.random() > 0.05 else 'create_trial',
                               'hpo' if random.random() > 0.2 else 'distrib',
                               random.choice('min max mean'.split(' '))],
-                        start_time=str(datetime.datetime.now())))
+                        started_on=str(datetime.datetime.now())))
 
                 if 'create_trial' in trial['registry']['tags']:
                     trial['output'] = {}
@@ -98,29 +100,64 @@ def __dummy_query():
     return trials
 
 
+def query_db(db_client, timestamp, limit):
+    # query = {'registry.reported_on': {'$lte': bson.objectid.ObjectId.from_datetime(new_timestamp)}}
+    query = {}
+    if timestamp:
+        query['registry.reported_on'] = {'$gt': timestamp}
+
+    # if selected_status:
+    #     query['registry.status'] = {'$in': list(selected_status)}
+    query['registry.status'] = 'Completed'
+
+    if getattr(config, 'versions', None) and len(config.versions) == 1:
+        query['registry.tags'] = config.versions[0]
+    elif getattr(config, 'versions', None):
+        query['registry.tags'] = {'$in': config.versions}
+
+    sort = [('registry.reported_on', pymongo.ASCENDING)]
+
+    projection = {
+        'output': 1,
+        'arguments': 1,
+        'registry.reported_on': 1,
+        'registry.status': 1, 'registry.tags': 1, 'registry.started_on': 1, 'registry.duration': 1}
+
+    print(query)
+
+    # print(db_client.tasks.report.find(query, projection=projection).count())
+    return db_client.tasks.report.find(query, projection=projection).sort(sort).limit(limit)
+
+
 def query(observers, options):
 
-    # import pdb
-    # pdb.set_trace()
+    mahler_client = Client()
+    db_client = mahler_client.registrar._db._db
+
+    n = 0
+
+    # import datetime
+    timestamp = None # datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+    # print(timestamp)
 
     while True:
         # Fetch data
         # for each document, register for each observer
-        for document in __dummy_query():
+        new_documents = 0
+        for document in query_db(db_client, timestamp, limit=1000):
+            document['id'] = str(document.pop('_id'))
+            timestamp = document['registry'].pop('reported_on')
             for observer in observers:
                 observer.register(document)
-        print('sleeping')
-        time.sleep(1)
 
+            new_documents += 1
+        
+        n += new_documents
+        print(n)
 
-class Observer:
-    def __init__(self, key, client):
-        self.key = key
-        self.client = client
-
-    def register(self, document):
-        # Filter based on different things observer needs to monitor
-        self.client.rpush(self.key, json.dumps(document))
+        if not new_documents:
+            print('sleeping')
+            time.sleep(10)
 
 
 def build_cache(app, options):

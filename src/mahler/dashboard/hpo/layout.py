@@ -30,6 +30,7 @@ def build_row(redis_client, dataset_name, model_names):
 
 
 def build(redis_client, dataset_names, model_names, refresh_interval=5):
+    print(dataset_names)
     rows = [
         dcc.Interval(
             id='interval-component',

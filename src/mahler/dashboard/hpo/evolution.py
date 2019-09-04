@@ -1,4 +1,5 @@
 from collections import defaultdict
+import bisect
 import datetime
 import random
 import time
@@ -67,19 +68,11 @@ def render(redis_client, dataset_name, model_names, *args, model_focus=None, alg
     else:
         data = {}
 
-    lines = dict()
-    for algo_name in config.algo_names:
-        lines[algo_name] = ([], [])
-
-        for trial in sorted(data.get(algo_name, {}).values(), key=lambda trial: trial[0]):
-            lines[algo_name][0].append(trial[0])
-            lines[algo_name][1].append(trial[1])
-
     return {
             'data': [
                 go.Scatter(
-                    x=lines[algo_name][0],
-                    y=lines[algo_name][1],
+                    x=data.get(algo_name, {}).get('x', []),
+                    y=data.get(algo_name, {}).get('y', []),
                     mode='lines',
                     name=algo_name,
                     # line=dict(color='#FFAA00'),
@@ -87,6 +80,9 @@ def render(redis_client, dataset_name, model_names, *args, model_focus=None, alg
                     showlegend=False,
                     ) for algo_name in config.algo_names],
             'layout': dict(
+                yaxis=dict(
+                    autorange=True,
+                    type='log'),
                 title=model_name,
                 autosize=True,
                 height=250,
@@ -106,9 +102,7 @@ def render(redis_client, dataset_name, model_names, *args, model_focus=None, alg
 
 SIGNAL_ID = 'evolution-signal'
 
-__TMP_ALGOS = ['random-search', 'ASHA', 'BO', 'evo']
-
-def signal(redis_client, dataset_name, model_names, *click_datas, algo_names=__TMP_ALGOS):
+def signal(redis_client, dataset_name, model_names, *click_datas, algo_names=config.algo_names):
     # Find what model it is
     algo_name = None
     for click_data in click_datas:
@@ -140,16 +134,25 @@ class Observer:
             dataset_name=self.dataset_name, model_name=self.model_name)
 
     def register(self, document):
-        tags = [self.dataset_name, self.model_name, 'hpo', 'train']
-        if all(tag in document['registry']['tags'] for tag in tags):
-            start_time = utils.convert_strdatetime(document['registry']['start_time'])
-            duration = datetime.timedelta(seconds=document['registry']['duration'])
+        # tags = [self.dataset_name, self.model_name, 'hpo', 'train']
+        tags = [self.dataset_name, self.model_name, 'train']
 
-            observed_doc = dict(id=document['id'],
-                                end_time=str(start_time + duration),
-                                algo_name=utils.get_algo_name(document['registry']['tags']),
-                                value=document['output']['best_stats']['valid']['error_rate'])
-            self.client.rpush(self.get_key(), json.dumps(observed_doc))
+        if all(tag in document['registry']['tags'] for tag in tags):
+            if 'distrib' in document['registry']['tags'] or 'seed' in document['registry']['tags']:
+                return
+            # started_on = utils.convert_strdatetime(document['registry']['started_on'])
+            try:
+                
+                observed_doc = dict(id=document['id'],
+                                    duration=document['registry']['duration'],
+                                    started_on = str(document['registry']['started_on']),
+                                    algo_name=utils.get_algo_name(document['registry']['tags']),
+                                    value=document['output']['best']['valid']['error_rate'])
+                self.client.rpush(self.get_key(), json.dumps(observed_doc))
+            except Exception as e:
+                print(str(e))
+                print('error, skipping {}'.format(document['id']))
+
 
 
 def build_observer(dataset_name, model_name, algo_name, distrib_name, redis_client):
@@ -169,10 +172,52 @@ class DataProcessor(processor.DataProcessor):
 
     def compute(self, data, new_data):
 
+        for algo_name, algo_data in data.items():
+            algo_data['ids'] = set(algo_data['indexes'])
+
         for new_trial in new_data:
             algo_name = new_trial['algo_name']
             if algo_name not in data:
-                data[algo_name] = dict()
-            data[algo_name][new_trial['id']] = (new_trial['end_time'], new_trial['value'])
+                data[algo_name] = dict(end_times=[], values=[], durations=[], ids=set(), indexes=[])
+
+            # May be an update to running trial, and not a totally new trial
+            if new_trial['id'] in data[algo_name]['ids']:
+                index = data[algo_name]['indexes'].index(new_trial['id'])
+                del data[algo_name]['indexes'][index]
+                del data[algo_name]['end_times'][index]
+                del data[algo_name]['values'][index]
+                del data[algo_name]['durations'][index]
+                data[algo_name]['ids'].remove(new_trial['id'])
+
+            started_on = utils.convert_strdatetime(new_trial['started_on'])
+            end_time = str(started_on + datetime.timedelta(seconds=new_trial['duration']))
+
+            index = bisect.bisect_right(data[algo_name]['end_times'], end_time)
+            data[algo_name]['ids'].add(new_trial['id'])
+            data[algo_name]['indexes'].insert(index, new_trial['id'])
+            data[algo_name]['end_times'].insert(index, end_time)
+            data[algo_name]['values'].insert(index, new_trial['value'])
+            data[algo_name]['durations'].insert(index, new_trial['duration'])
+
+        for algo_name, algo_data in data.items():
+            mean_duration = sum(algo_data['durations']) / len(algo_data['durations'])
+            duration = []
+            evolution = []
+            worker_pool = []
+            for y in algo_data['values']:
+                if len(worker_pool) < config.max_ressource:
+                    worker_pool.append(y)
+                elif not evolution:
+                    duration.append(mean_duration)
+                    evolution.append(min(worker_pool))
+                    worker_pool = []
+                else:
+                    duration.append(duration[-1] + mean_duration)
+                    evolution.append(min(worker_pool + [evolution[-1]]))
+                    worker_pool = []
+
+            algo_data['x'] = duration
+            algo_data['y'] = evolution
+            algo_data.pop('ids')
 
         return data

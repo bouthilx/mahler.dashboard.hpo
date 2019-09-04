@@ -1,5 +1,6 @@
 import multiprocessing
 
+from . import config
 from . import summary
 from . import evolution
 from . import curves
@@ -15,8 +16,8 @@ class Observer:
 
 
 def build(redis_client, dataset_names, model_names):
-    algo_names = ['random-search', 'ASHA', 'BO', 'evo']
-    distrib_names = ['min', 'max', 'mean']
+    algo_names = config.algo_names
+    distrib_names = config.distrib_names
 
     observers = []
     for plotter in [summary, evolution, curves, distrib]:

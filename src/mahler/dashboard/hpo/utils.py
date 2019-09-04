@@ -28,4 +28,7 @@ def get_distrib_name(tags):
 
 
 def convert_strdatetime(timestamp):
-    return datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+    try:
+        return datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        return datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")

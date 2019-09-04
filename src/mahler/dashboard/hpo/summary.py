@@ -49,9 +49,10 @@ SIGNAL_ID = 'summary-signal'
 
 
 def build(redis_client, dataset_name, model_names):
+    print(get_id(dataset_name))
     return dcc.Graph(id=get_id(dataset_name),
                      figure=render(redis_client, dataset_name, model_names),
-                     clear_on_unhover=True)
+                     clear_on_unhover=False)  # True)
 
 
 def render(redis_client, dataset_name, model_names, *args, distrib_mode=None):
@@ -104,6 +105,8 @@ def render(redis_client, dataset_name, model_names, *args, distrib_mode=None):
 
 def signal(redis_client, dataset_name, model_names, *click_datas):
     # Find what model it is
+    print('hillo')
+    print('hillo', dataset_name, model_names, *click_datas)
     model_name = None
     for click_data in click_datas:
         if click_data is not None:
@@ -111,14 +114,18 @@ def signal(redis_client, dataset_name, model_names, *click_datas):
             break
 
     if model_name is None:
+        print('model is None prevent update')
         raise dash.exceptions.PreventUpdate
 
     old_model_name = redis_client.get('model-name').decode('utf-8')
 
     if old_model_name == model_name:
+        print('prevent update')
         raise dash.exceptions.PreventUpdate
 
     redis_client.set('model-name', model_name)
+
+    print('completed')
 
     return model_name
 
@@ -144,10 +151,14 @@ class Observer:
     def register(self, document):
         tags = [self.dataset_name, self.distrib_name, 'distrib', 'train']
         if all(tag in document['registry']['tags'] for tag in tags):
-            observed_doc = dict(id=document['id'],
-                                model_name=utils.get_model_name(document['registry']['tags']),
-                                value=document['output']['best_stats']['test']['error_rate'])
-            self.client.rpush(self.get_key(), json.dumps(observed_doc))
+            try:
+                observed_doc = dict(id=document['id'],
+                                    model_name=utils.get_model_name(document['registry']['tags']),
+                                    value=document['output']['best']['test']['error_rate'])
+                self.client.rpush(self.get_key(), json.dumps(observed_doc))
+            except Exception as e:
+                print(str(e))
+                print('error, skipping {}'.format(document['id']))
 
 
 def build_observers(redis_client, dataset_names, model_names, algo_names, distrib_names):
